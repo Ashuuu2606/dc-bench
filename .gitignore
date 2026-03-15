@@ -1,0 +1,12 @@
+build/
+results/
+plots/
+*.o
+*.a
+*.so
+*.csv
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+compile_commands.json
