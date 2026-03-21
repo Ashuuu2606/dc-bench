@@ -1,0 +1,31 @@
+{
+    "name": "tcp_dctcp_pooled_32",
+    "protocol": "tcp",
+    "server": {
+        "hostname": "node-0.experiment.project.emulab.net",
+        "user": "root"
+    },
+    "clients": [
+        {"hostname": "node-1.experiment.project.emulab.net", "user": "root"},
+        {"hostname": "node-2.experiment.project.emulab.net", "user": "root"},
+        {"hostname": "node-3.experiment.project.emulab.net", "user": "root"},
+        {"hostname": "node-4.experiment.project.emulab.net", "user": "root"}
+    ],
+    "binary_dir": "./build",
+    "output_dir": "./results/tcp_dctcp_pooled_32",
+    "params": {
+        "port": 9000,
+        "pool_size": 32,
+        "dctcp": true,
+        "scheduling": "size_aware",
+        "dist": "bimodal",
+        "arrival": "closed",
+        "msg_size": 1024,
+        "bimodal_small": 256,
+        "bimodal_large": 1048576,
+        "bimodal_ratio": 0.9,
+        "requests": 100000,
+        "warmup": 5000,
+        "cpu_monitor": true
+    }
+}
