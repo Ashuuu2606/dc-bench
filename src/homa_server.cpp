@@ -59,7 +59,7 @@ uint64_t HomaServer::total_bytes() const {
 }
 
 void HomaServer::worker_loop() {
-    constexpr size_t BUF_SIZE = 4 * 1024 * 1024 + sizeof(MessageHeader);
+    constexpr size_t BUF_SIZE = 1000000;
     std::vector<uint8_t> buf(BUF_SIZE);
 
     while (running_) {
