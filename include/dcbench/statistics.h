@@ -27,7 +27,7 @@ public:
     void print_summary() const;
 
 private:
-    std::vector<uint64_t> samples_;
+    mutable std::vector<uint64_t> samples_;
     mutable bool sorted_ = false;
 
     void ensure_sorted() const;
