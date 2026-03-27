@@ -1,8 +1,40 @@
 #include "dcbench/homa_api.h"
 
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <cstring>
 #include <stdexcept>
+
+#define HOMA_IOCTL_SEND   1003101
+#define HOMA_IOCTL_RECV   1003102
+#define HOMA_IOCTL_REPLY  1003103
+
+struct homa_send_args {
+    void *request;
+    const struct iovec *iovec;
+    size_t length;
+    struct sockaddr_in dest_addr;
+    uint64_t id;
+};
+
+struct homa_recv_args {
+    void *buf;
+    const struct iovec *iovec;
+    size_t len;
+    struct sockaddr_in source_addr;
+    int flags;
+    uint64_t requestedId;
+    uint64_t actualId;
+    int type;
+};
+
+struct homa_reply_args {
+    void *response;
+    const struct iovec *iovec;
+    size_t length;
+    struct sockaddr_in dest_addr;
+    uint64_t id;
+};
 
 namespace dcbench {
 
@@ -28,37 +60,16 @@ bool HomaSocket::bind(uint16_t port) {
 int64_t HomaSocket::send_request(const void* buf, size_t len,
                                   const struct sockaddr_in& dest,
                                   uint64_t* rpc_id) {
-    HomaSendmsgArgs args{};
+    homa_send_args args{};
+    args.request = const_cast<void*>(buf);
+    args.iovec = nullptr;
+    args.length = len;
+    args.dest_addr = dest;
     args.id = 0;
-    args.completion_cookie = 0;
 
-    struct iovec iov;
-    iov.iov_base = const_cast<void*>(buf);
-    iov.iov_len = len;
-
-    union {
-        struct cmsghdr cmsg;
-        char space[CMSG_SPACE(sizeof(HomaSendmsgArgs))];
-    } control{};
-
-    struct msghdr msg{};
-    msg.msg_name = const_cast<struct sockaddr_in*>(&dest);
-    msg.msg_namelen = sizeof(dest);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control.space;
-    msg.msg_controllen = sizeof(control.space);
-
-    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-    cmsg->cmsg_level = IPPROTO_HOMA;
-    cmsg->cmsg_type = 0;
-    cmsg->cmsg_len = CMSG_LEN(sizeof(HomaSendmsgArgs));
-    std::memcpy(CMSG_DATA(cmsg), &args, sizeof(args));
-
-    ssize_t result = ::sendmsg(fd_, &msg, 0);
+    int result = ::ioctl(fd_, HOMA_IOCTL_SEND, &args);
 
     if (result >= 0 && rpc_id) {
-        std::memcpy(&args, CMSG_DATA(cmsg), sizeof(args));
         *rpc_id = args.id;
     }
 
@@ -68,76 +79,36 @@ int64_t HomaSocket::send_request(const void* buf, size_t len,
 int64_t HomaSocket::send_response(const void* buf, size_t len,
                                    const struct sockaddr_in& dest,
                                    uint64_t rpc_id) {
-    HomaSendmsgArgs args{};
+    homa_reply_args args{};
+    args.response = const_cast<void*>(buf);
+    args.iovec = nullptr;
+    args.length = len;
+    args.dest_addr = dest;
     args.id = rpc_id;
-    args.completion_cookie = 0;
 
-    struct iovec iov;
-    iov.iov_base = const_cast<void*>(buf);
-    iov.iov_len = len;
-
-    union {
-        struct cmsghdr cmsg;
-        char space[CMSG_SPACE(sizeof(HomaSendmsgArgs))];
-    } control{};
-
-    struct msghdr msg{};
-    msg.msg_name = const_cast<struct sockaddr_in*>(&dest);
-    msg.msg_namelen = sizeof(dest);
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control.space;
-    msg.msg_controllen = sizeof(control.space);
-
-    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-    cmsg->cmsg_level = IPPROTO_HOMA;
-    cmsg->cmsg_type = 0;
-    cmsg->cmsg_len = CMSG_LEN(sizeof(HomaSendmsgArgs));
-    std::memcpy(CMSG_DATA(cmsg), &args, sizeof(args));
-
-    return ::sendmsg(fd_, &msg, 0);
+    return ::ioctl(fd_, HOMA_IOCTL_REPLY, &args);
 }
 
 int64_t HomaSocket::recv(void* buf, size_t len,
                           struct sockaddr_in* src,
                           uint64_t* rpc_id,
                           int flags) {
-    HomaRecvmsgArgs args{};
-    args.id = (rpc_id && *rpc_id != 0) ? *rpc_id : 0;
+    homa_recv_args args{};
+    args.buf = buf;
+    args.iovec = nullptr;
+    args.len = len;
+    if (src) args.source_addr = *src;
     args.flags = flags;
-    args.num_bpages = 0;
+    args.requestedId = (rpc_id && *rpc_id != 0) ? *rpc_id : 0;
+    args.actualId = 0;
 
-    struct iovec iov;
-    iov.iov_base = buf;
-    iov.iov_len = len;
+    int result = ::ioctl(fd_, HOMA_IOCTL_RECV, &args);
 
-    union {
-        struct cmsghdr cmsg;
-        char space[CMSG_SPACE(sizeof(HomaRecvmsgArgs))];
-    } control{};
+    if (src) *src = args.source_addr;
+    if (rpc_id) *rpc_id = args.actualId;
 
-    struct msghdr msg{};
-    msg.msg_name = src;
-    msg.msg_namelen = src ? sizeof(*src) : 0;
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control.space;
-    msg.msg_controllen = sizeof(control.space);
-
-    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-    cmsg->cmsg_level = IPPROTO_HOMA;
-    cmsg->cmsg_type = 0;
-    cmsg->cmsg_len = CMSG_LEN(sizeof(HomaRecvmsgArgs));
-    std::memcpy(CMSG_DATA(cmsg), &args, sizeof(args));
-
-    ssize_t result = ::recvmsg(fd_, &msg, 0);
-
-    if (result >= 0 && rpc_id) {
-        std::memcpy(&args, CMSG_DATA(cmsg), sizeof(args));
-        *rpc_id = args.id;
-    }
-
-    return result;
+    if (result >= 0) return static_cast<int64_t>(args.len);
+    return -1;
 }
 
 int HomaSocket::fd() const {

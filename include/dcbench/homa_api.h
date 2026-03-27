@@ -8,7 +8,7 @@
 namespace dcbench {
 
 #ifndef IPPROTO_HOMA
-#define IPPROTO_HOMA 146
+#define IPPROTO_HOMA 140
 #endif
 
 struct HomaSendmsgArgs {
