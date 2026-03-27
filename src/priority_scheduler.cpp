@@ -33,7 +33,7 @@ uint32_t PriorityScheduler::size_aware(uint32_t message_size) {
     uint32_t large_pool = std::max(1u, pool_size_ / 4);
     uint32_t small_pool = pool_size_ - large_pool;
 
-    if (message_size > 65536) {
+    if (message_size > 4096) {
         return small_pool + (rr_counter_.fetch_add(1, std::memory_order_relaxed) % large_pool);
     }
     return rr_counter_.fetch_add(1, std::memory_order_relaxed) % small_pool;
