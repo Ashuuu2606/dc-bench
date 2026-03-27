@@ -2,6 +2,7 @@
 #include "dcbench/message.h"
 #include "dcbench/timing.h"
 
+#include <algorithm>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
