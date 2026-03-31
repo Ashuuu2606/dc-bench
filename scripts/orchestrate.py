@@ -46,6 +46,12 @@ def scp_from(node, remote_path, local_path):
     return subprocess.run(full, capture_output=True, text=True, check=True)
 
 
+def detect_internal_ip(node):
+    result = ssh_cmd(node, "ip -4 addr show | grep 'inet 10\\.' | awk '{print $2}' | cut -d/ -f1 | head -1", check=False)
+    ip = result.stdout.strip() if result.returncode == 0 else ""
+    return ip or node.hostname
+
+
 def deploy_binaries(nodes, binary_dir):
     for node in nodes:
         print(f"  Deploying to {node.hostname}...")
@@ -79,38 +85,41 @@ def run_tcp_experiment(config):
 
     print(f"  Starting server on {server.hostname}...")
     ssh_cmd(server, f"nohup /tmp/dc-bench/tcp_bench {server_args} "
-            f"> /tmp/dc-bench/server.log 2>&1 &")
+            f"> /tmp/dc-bench/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
-    client_procs = []
+    server_addr = detect_internal_ip(server)
+    print(f"  Server internal address: {server_addr}")
+    client_nodes = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname
+        client_params["host"] = server_addr
         client_params["output"] = f"/tmp/dc-bench/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
-        proc = subprocess.Popen(
-            ["ssh", "-o", "StrictHostKeyChecking=no",
-             f"{client_node.user}@{client_node.hostname}",
-             f"/tmp/dc-bench/tcp_bench {client_args}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        client_procs.append((i, client_node, proc))
+        ssh_cmd(client_node,
+                f"nohup /tmp/dc-bench/tcp_bench {client_args} "
+                f"> /tmp/dc-bench/client_{i}.log 2>&1 < /dev/null &")
+        client_nodes.append((i, client_node))
 
-    for i, node, proc in client_procs:
-        stdout, stderr = proc.communicate(timeout=600)
-        print(f"  Client {i} finished (exit={proc.returncode})")
-        if stdout:
-            print(stdout)
-        if stderr:
-            print(f"  STDERR: {stderr}")
+    print("  Waiting for clients to finish...")
+    for i, client_node in client_nodes:
+        while True:
+            r = ssh_cmd(client_node, "pgrep -f 'tcp_bench client'", check=False)
+            if r.returncode != 0:
+                break
+            time.sleep(10)
+        print(f"  Client {i} finished")
+        log = ssh_cmd(client_node, f"cat /tmp/dc-bench/client_{i}.log", check=False)
+        if log.stdout.strip():
+            print(log.stdout.strip())
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f tcp_bench", check=False)
 
     os.makedirs(config.output_dir, exist_ok=True)
-    for i, client_node, _ in client_procs:
+    for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
         scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
@@ -129,38 +138,41 @@ def run_homa_experiment(config):
     print(f"  Starting Homa server on {server.hostname}...")
     ssh_cmd(server, f"nohup /tmp/dc-bench/homa_bench server "
             f"--port {port} --threads {threads} "
-            f"> /tmp/dc-bench/server.log 2>&1 &")
+            f"> /tmp/dc-bench/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
-    client_procs = []
+    server_addr = detect_internal_ip(server)
+    print(f"  Server internal address: {server_addr}")
+    client_nodes = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname
+        client_params["host"] = server_addr
         client_params["output"] = f"/tmp/dc-bench/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
-        proc = subprocess.Popen(
-            ["ssh", "-o", "StrictHostKeyChecking=no",
-             f"{client_node.user}@{client_node.hostname}",
-             f"/tmp/dc-bench/homa_bench {client_args}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        client_procs.append((i, client_node, proc))
+        ssh_cmd(client_node,
+                f"nohup /tmp/dc-bench/homa_bench {client_args} "
+                f"> /tmp/dc-bench/client_{i}.log 2>&1 < /dev/null &")
+        client_nodes.append((i, client_node))
 
-    for i, node, proc in client_procs:
-        stdout, stderr = proc.communicate(timeout=600)
-        print(f"  Client {i} finished (exit={proc.returncode})")
-        if stdout:
-            print(stdout)
-        if stderr:
-            print(f"  STDERR: {stderr}")
+    print("  Waiting for clients to finish...")
+    for i, client_node in client_nodes:
+        while True:
+            r = ssh_cmd(client_node, "pgrep -f 'homa_bench client'", check=False)
+            if r.returncode != 0:
+                break
+            time.sleep(10)
+        print(f"  Client {i} finished")
+        log = ssh_cmd(client_node, f"cat /tmp/dc-bench/client_{i}.log", check=False)
+        if log.stdout.strip():
+            print(log.stdout.strip())
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f homa_bench", check=False)
 
     os.makedirs(config.output_dir, exist_ok=True)
-    for i, client_node, _ in client_procs:
+    for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
         scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
