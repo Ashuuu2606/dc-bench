@@ -3,13 +3,25 @@
     "protocol": "homa",
     "server": {
         "hostname": "amd103.utah.cloudlab.us",
-        "user": "varunm"
+        "user": "himanish"
     },
     "clients": [
-        {"hostname": "amd110.utah.cloudlab.us", "user": "varunm"},
-        {"hostname": "amd109.utah.cloudlab.us", "user": "varunm"},
-        {"hostname": "amd108.utah.cloudlab.us", "user": "varunm"},
-        {"hostname": "amd101.utah.cloudlab.us", "user": "varunm"}
+        {
+            "hostname": "amd110.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd109.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd108.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd101.utah.cloudlab.us",
+            "user": "himanish"
+        }
     ],
     "binary_dir": "./build",
     "output_dir": "./results/homa_default_new",
