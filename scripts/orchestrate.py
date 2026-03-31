@@ -85,7 +85,7 @@ def run_tcp_experiment(config):
     client_procs = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname.split(".")[0]
+        client_params["host"] = server.hostname
         client_params["output"] = f"/tmp/dc-bench/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
@@ -103,6 +103,8 @@ def run_tcp_experiment(config):
         print(f"  Client {i} finished (exit={proc.returncode})")
         if stdout:
             print(stdout)
+        if stderr:
+            print(f"  STDERR: {stderr}")
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f tcp_bench", check=False)
@@ -133,7 +135,7 @@ def run_homa_experiment(config):
     client_procs = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname.split(".")[0]
+        client_params["host"] = server.hostname
         client_params["output"] = f"/tmp/dc-bench/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
@@ -151,6 +153,8 @@ def run_homa_experiment(config):
         print(f"  Client {i} finished (exit={proc.returncode})")
         if stdout:
             print(stdout)
+        if stderr:
+            print(f"  STDERR: {stderr}")
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f homa_bench", check=False)

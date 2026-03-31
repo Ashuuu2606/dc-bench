@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOMA_DIR="${1:-/tmp/HomaModule}"
-BRANCH="${2:-master}"
+BRANCH="${2:-linux_5.4.80}"
 
 echo "=== Building HomaModule ==="
 
@@ -16,6 +16,10 @@ fi
 
 cd "$HOMA_DIR"
 git checkout "$BRANCH"
+
+echo "[1.5/4] Patching for kernel $(uname -r)..."
+sed -i '/\.early_demux\b/d' homa_plumbing.c
+sed -i '/\.early_demux_handler\b/d' homa_plumbing.c
 
 echo "[2/4] Building kernel module..."
 make -j"$(nproc)"

@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <cstring>
 #include <stdexcept>
@@ -47,13 +48,16 @@ int ConnectionPool::create_and_connect() {
 
     apply_socket_options(fd);
 
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(cfg_.port);
-    if (::inet_pton(AF_INET, cfg_.host.c_str(), &addr.sin_addr) <= 0) {
+    struct addrinfo hints{}, *res = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if (::getaddrinfo(cfg_.host.c_str(), nullptr, &hints, &res) != 0 || !res) {
         ::close(fd);
         throw std::runtime_error("Invalid address: " + cfg_.host);
     }
+    struct sockaddr_in addr = *reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
+    addr.sin_port = htons(cfg_.port);
+    ::freeaddrinfo(res);
 
     if (::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         ::close(fd);
