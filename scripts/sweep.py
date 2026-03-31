@@ -50,8 +50,11 @@ def main():
     if args.dry_run:
         return
 
+    home_tmp = os.path.join(os.path.expanduser("~"), "tmp")
+    os.makedirs(home_tmp, exist_ok=True)
+
     for i, cfg in enumerate(configs):
-        tmp_path = f"/tmp/sweep_config_{i}.json"
+        tmp_path = os.path.join(home_tmp, f"sweep_config_{i}.json")
         with open(tmp_path, "w") as f:
             json.dump(cfg, f, indent=2)
 
