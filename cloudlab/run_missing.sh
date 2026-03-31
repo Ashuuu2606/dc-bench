@@ -1,94 +1,122 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-SERVER="Ashutosh@hp034.utah.cloudlab.us"
-CLIENT1="Ashutosh@hp037.utah.cloudlab.us"
-CLIENT2="Ashutosh@hp004.utah.cloudlab.us"
-CLIENT3="Ashutosh@hp024.utah.cloudlab.us"
-CLIENT4="Ashutosh@hp008.utah.cloudlab.us"
-CLIENTS=("$CLIENT1" "$CLIENT2" "$CLIENT3" "$CLIENT4")
-SERVER_IP="10.10.1.1"
-BENCH="/tmp/dc-bench/build/tcp_bench"
-LOCALDIR="/Users/ashutoshbharadwaj/Desktop/dns/dc-bench/results"
-SSH="ssh -o StrictHostKeyChecking=no"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/node_config.sh" ]; then
+    source "$SCRIPT_DIR/node_config.sh"
+fi
+source "$SCRIPT_DIR/remote_config.sh"
+
+dcbench_init_remote_config \
+    "${DCBENCH_NODE_SERVER:-}" \
+    "${DCBENCH_NODE_CLIENTS:-}" \
+    "${DCBENCH_SERVER_IP:-10.10.1.1}" \
+    "/tmp/dc-bench/build/tcp_bench" \
+    "$SCRIPT_DIR/../results" \
+    "9000"
+
+if ! dcbench_parse_remote_args "$(basename "$0")" "$@"; then
+    rc=$?
+    [ "$rc" -eq 2 ] && exit 0
+    exit "$rc"
+fi
 
 run_experiment() {
-    local NAME="$1"; local SERVER_EXTRA="$2"; local CLIENT_EXTRA="$3"
-    local NREQ="$4"; local WARMUP="$5"
+    local name="$1"
+    local server_extra="$2"
+    local client_extra="$3"
+    local nreq="$4"
+    local warmup="$5"
 
     echo ""
     echo "================================================================"
-    echo "  $NAME"
+    echo "  $name"
     echo "================================================================"
 
-    $SSH "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
     sleep 1
-    $SSH "$SERVER" "nohup $BENCH server --port 9000 $SERVER_EXTRA > /dev/null 2>&1 &"
+    dcbench_ssh "$SERVER" "nohup $BENCH server --port $PORT $server_extra > /dev/null 2>&1 &"
     sleep 1
 
-    mkdir -p "$LOCALDIR/$NAME"
-    local PIDS=()
+    mkdir -p "$LOCALDIR/$name"
+    local pids=()
     for i in "${!CLIENTS[@]}"; do
-        $SSH "${CLIENTS[$i]}" \
-            "$BENCH client --host $SERVER_IP --port 9000 $CLIENT_EXTRA --requests $NREQ --warmup $WARMUP --cpu-monitor --output /tmp/res_${NAME}" \
-            > "$LOCALDIR/$NAME/client_${i}.txt" 2>&1 &
-        PIDS+=($!)
+        dcbench_ssh "${CLIENTS[$i]}" \
+            "$BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output /tmp/res_${name}" \
+            > "$LOCALDIR/$name/client_${i}.txt" 2>&1 &
+        pids+=($!)
     done
-    for pid in "${PIDS[@]}"; do wait "$pid" || true; done
-    $SSH "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    for pid in "${pids[@]}"; do
+        wait "$pid" || true
+    done
+    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
 
     echo "  Results:"
     for i in "${!CLIENTS[@]}"; do
-        local p50=$(grep "p50:" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        local p95=$(grep "p95:" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        local p99=$(grep "p99:" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | head -1 | awk '{print $2}')
-        local p999=$(grep "p99.9:" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        local tput=$(grep "Throughput:" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        local cpu=$(grep "CPU" "$LOCALDIR/$NAME/client_${i}.txt" 2>/dev/null | awk '{print $3}')
+        local p50
+        local p95
+        local p99
+        local p999
+        local tput
+        local cpu
+        p50=$(grep "p50:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
+        p95=$(grep "p95:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
+        p99=$(grep "p99:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | head -1 | awk '{print $2}')
+        p999=$(grep "p99.9:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
+        tput=$(grep "Throughput:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
+        cpu=$(grep "CPU" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $3}')
         echo "    c$i: p50=${p50} p95=${p95} p99=${p99} p999=${p999} tput=${tput} cpu=${cpu}"
     done
 }
 
 run_mem_measurement() {
-    local NAME="$1"; local POOL="$2"
+    local name="$1"
+    local pool="$2"
     echo ""
-    echo "=== Memory: pool=$POOL ==="
-    $SSH "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    echo "=== Memory: pool=$pool ==="
+    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
     sleep 1
-    $SSH "$SERVER" "nohup $BENCH server --port 9000 > /dev/null 2>&1 &"
+    dcbench_ssh "$SERVER" "nohup $BENCH server --port $PORT > /dev/null 2>&1 &"
     sleep 1
 
-    local MEM_BEFORE=$($SSH "$SERVER" "grep 'Mem\|Tcp\|Sock' /proc/net/sockstat /proc/meminfo 2>/dev/null")
+    local mem_before
+    mem_before=$(dcbench_ssh "$SERVER" "grep 'Mem\|Tcp\|Sock' /proc/net/sockstat /proc/meminfo 2>/dev/null")
 
-    local PIDS=()
+    local pids=()
     for i in "${!CLIENTS[@]}"; do
-        $SSH "${CLIENTS[$i]}" \
-            "$BENCH client --host $SERVER_IP --port 9000 --pool-size $POOL --dist fixed --msg-size 1024 --requests 100000 --warmup 1000 --output /tmp/res_mem" \
+        dcbench_ssh "${CLIENTS[$i]}" \
+            "$BENCH client --host $SERVER_IP --port $PORT --pool-size $pool --dist fixed --msg-size 1024 --requests 100000 --warmup 1000 --output /tmp/res_mem" \
             > /dev/null 2>&1 &
-        PIDS+=($!)
+        pids+=($!)
     done
 
     sleep 3
-    local MEM_DURING=$($SSH "$SERVER" "grep 'Mem\|Tcp\|Sock' /proc/net/sockstat /proc/meminfo 2>/dev/null")
-    local CONN_COUNT=$($SSH "$SERVER" "cat /proc/net/tcp | wc -l" 2>/dev/null)
+    local mem_during
+    local conn_count
+    mem_during=$(dcbench_ssh "$SERVER" "grep 'Mem\|Tcp\|Sock' /proc/net/sockstat /proc/meminfo 2>/dev/null")
+    conn_count=$(dcbench_ssh "$SERVER" "cat /proc/net/tcp | wc -l" 2>/dev/null)
 
-    for pid in "${PIDS[@]}"; do wait "$pid" || true; done
-    $SSH "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    for pid in "${pids[@]}"; do
+        wait "$pid" || true
+    done
+    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
 
-    mkdir -p "$LOCALDIR/mem_pool${POOL}"
-    echo "BEFORE:" > "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "$MEM_BEFORE" >> "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "" >> "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "DURING (4 clients x pool=$POOL = $((4 * POOL)) connections):" >> "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "$MEM_DURING" >> "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "TCP connections: $CONN_COUNT" >> "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
-    echo "  Connections: $CONN_COUNT, pool=$POOL"
-    cat "$LOCALDIR/mem_pool${POOL}/sockstat.txt"
+    mkdir -p "$LOCALDIR/mem_pool${pool}"
+    echo "BEFORE:" > "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "$mem_before" >> "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "" >> "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "DURING (${#CLIENTS[@]} clients x pool=$pool = $((${#CLIENTS[@]} * pool)) connections):" >> "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "$mem_during" >> "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "TCP connections: $conn_count" >> "$LOCALDIR/mem_pool${pool}/sockstat.txt"
+    echo "  Connections: $conn_count, pool=$pool"
+    cat "$LOCALDIR/mem_pool${pool}/sockstat.txt"
 }
 
 echo "=========================================="
 echo "  MISSING EXPERIMENTS"
 echo "  $(date)"
 echo "=========================================="
+dcbench_print_remote_config
 
 echo ""
 echo "###############################################"

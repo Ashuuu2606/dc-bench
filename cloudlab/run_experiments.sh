@@ -1,11 +1,95 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BENCH="/tmp/dc-bench/build/tcp_bench"
-SERVER_IP="10.10.1.1"
-PORT=9000
-RESULTS="/tmp/experiment_results"
-CLIENTS=("10.10.1.2" "10.10.1.3" "10.10.1.4" "10.10.1.5")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/node_config.sh" ]; then
+    source "$SCRIPT_DIR/node_config.sh"
+fi
+
+BENCH="${DCBENCH_BENCH:-/tmp/dc-bench/build/tcp_bench}"
+SERVER_IP="${DCBENCH_SERVER_IP:-10.10.1.1}"
+PORT="${DCBENCH_PORT:-9000}"
+RESULTS="${DCBENCH_RESULTS:-/tmp/experiment_results}"
+CLIENTS_CSV="${DCBENCH_CLIENTS:-10.10.1.2,10.10.1.3,10.10.1.4,10.10.1.5}"
+SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no}"
+read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
+IFS=',' read -r -a CLIENTS <<< "$CLIENTS_CSV"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --bench PATH              Benchmark binary path (default: $BENCH)
+  --server-ip IP            Server IP (default: $SERVER_IP)
+  --port PORT               Port (default: $PORT)
+  --results DIR             Results directory (default: $RESULTS)
+  --clients IP1,IP2,...     Comma-separated client SSH targets
+  --ssh-opts "..."          SSH options string (default: -o StrictHostKeyChecking=no)
+  -h, --help                Show help
+
+Environment:
+  DCBENCH_BENCH, DCBENCH_SERVER_IP, DCBENCH_PORT,
+  DCBENCH_RESULTS, DCBENCH_CLIENTS, DCBENCH_SSH_OPTS
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --bench)
+            BENCH="$2"
+            shift 2
+            ;;
+        --server-ip)
+            SERVER_IP="$2"
+            shift 2
+            ;;
+        --port)
+            PORT="$2"
+            shift 2
+            ;;
+        --results)
+            RESULTS="$2"
+            shift 2
+            ;;
+        --clients)
+            IFS=',' read -r -a CLIENTS <<< "$2"
+            shift 2
+            ;;
+        --ssh-opts)
+            SSH_OPTS_STR="$2"
+            read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ "${#CLIENTS[@]}" -eq 0 ]; then
+    echo "At least one client is required."
+    exit 1
+fi
+
+remote_ssh() {
+    local host="$1"
+    local cmd="$2"
+    ssh "${SSH_OPTS[@]}" "$host" "$cmd"
+}
+
+remote_scp_from() {
+    local host="$1"
+    local remote_path="$2"
+    local local_path="$3"
+    scp "${SSH_OPTS[@]}" "$host:$remote_path" "$local_path"
+}
 
 mkdir -p "$RESULTS"
 
@@ -34,7 +118,7 @@ run_experiment() {
     for i in "${!CLIENTS[@]}"; do
         local CIP="${CLIENTS[$i]}"
         local OUTDIR="$RESULTS/$NAME/client_$i"
-        ssh -o StrictHostKeyChecking=no "$CIP" \
+        remote_ssh "$CIP" \
             "$BENCH client --host $SERVER_IP --port $PORT \
             $CLIENT_FLAGS \
             --requests $REQUESTS --warmup $WARMUP --cpu-monitor \
@@ -60,7 +144,7 @@ run_experiment() {
         local CIP="${CLIENTS[$i]}"
         local OUTDIR="$RESULTS/$NAME/client_$i"
         mkdir -p "$RESULTS/$NAME/client_$i"
-        scp -o StrictHostKeyChecking=no "$CIP:$OUTDIR/latency.csv" \
+        remote_scp_from "$CIP" "$OUTDIR/latency.csv" \
             "$RESULTS/$NAME/client_$i/latency.csv" 2>/dev/null || true
     done
 }
@@ -69,6 +153,8 @@ echo "============================================================"
 echo "  TCP vs Homa Benchmark Suite"
 echo "  Server: $SERVER_IP (node-0)"
 echo "  Clients: ${CLIENTS[*]}"
+echo "  Bench: $BENCH"
+echo "  Results: $RESULTS"
 echo "  Time: $(date)"
 echo "============================================================"
 

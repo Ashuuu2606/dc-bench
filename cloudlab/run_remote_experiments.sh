@@ -35,6 +35,7 @@ run_experiment() {
 
     dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
     sleep 1
+
     dcbench_ssh "$SERVER" "nohup $BENCH server --port $PORT $server_extra > /dev/null 2>&1 &"
     sleep 1
 
@@ -46,40 +47,90 @@ run_experiment() {
             > "$LOCALDIR/$name/client_${i}.txt" 2>&1 &
         pids+=($!)
     done
+
     for pid in "${pids[@]}"; do
         wait "$pid" || true
     done
+
     dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
 
     echo "  Results:"
     for i in "${!CLIENTS[@]}"; do
         local p50
-        local p95
         local p99
         local p999
         local tput
-        local cpu
         p50=$(grep "p50:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        p95=$(grep "p95:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
         p99=$(grep "p99:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | head -1 | awk '{print $2}')
         p999=$(grep "p99.9:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
         tput=$(grep "Throughput:" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $2}')
-        cpu=$(grep "CPU" "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null | awk '{print $3}')
-        echo "    c$i: p50=${p50} p95=${p95} p99=${p99} p999=${p999} tput=${tput} cpu=${cpu}"
+        echo "    client_$i: p50=${p50}us  p99=${p99}us  p99.9=${p999}us  ${tput} rps"
     done
 }
 
-echo "=== FILLING FINAL GAPS ==="
+echo "Starting all experiments at $(date)"
 dcbench_print_remote_config
 
-run_experiment "exp25_pareto_pool32_rr" "" \
-    "--pool-size 32 --scheduling round_robin --dist pareto --pareto-shape 1.5 --pareto-scale 256" 20000 2000
+run_experiment "exp01_bimodal_single" \
+    "" \
+    "--pool-size 1 --dist bimodal --bimodal-small 256 --bimodal-large 1048576 --bimodal-ratio 0.9" \
+    10000 1000
 
-run_experiment "exp26_dctcp_single_bimodal64k" "--dctcp" \
-    "--pool-size 1 --dctcp --dist bimodal --bimodal-small 256 --bimodal-large 65536 --bimodal-ratio 0.9" 20000 2000
+run_experiment "exp02_bimodal_pool32_rr" \
+    "" \
+    "--pool-size 32 --scheduling round_robin --dist bimodal --bimodal-small 256 --bimodal-large 1048576 --bimodal-ratio 0.9" \
+    10000 1000
 
-run_experiment "exp27_dctcp_single_pareto" "--dctcp" \
-    "--pool-size 1 --dctcp --dist pareto --pareto-shape 1.5 --pareto-scale 256" 20000 2000
+run_experiment "exp03_bimodal_pool32_sa" \
+    "" \
+    "--pool-size 32 --scheduling size_aware --dist bimodal --bimodal-small 256 --bimodal-large 1048576 --bimodal-ratio 0.9" \
+    10000 1000
+
+run_experiment "exp04_bimodal_dctcp_single" \
+    "--dctcp" \
+    "--pool-size 1 --dctcp --dist bimodal --bimodal-small 256 --bimodal-large 1048576 --bimodal-ratio 0.9" \
+    10000 1000
+
+run_experiment "exp05_bimodal_dctcp_pool32_sa" \
+    "--dctcp" \
+    "--pool-size 32 --dctcp --scheduling size_aware --dist bimodal --bimodal-small 256 --bimodal-large 1048576 --bimodal-ratio 0.9" \
+    10000 1000
+
+run_experiment "exp06_pareto_single" \
+    "" \
+    "--pool-size 1 --dist pareto --pareto-shape 1.5 --pareto-scale 256" \
+    20000 2000
+
+run_experiment "exp07_pareto_pool32_sa" \
+    "" \
+    "--pool-size 32 --scheduling size_aware --dist pareto --pareto-shape 1.5 --pareto-scale 256" \
+    20000 2000
+
+run_experiment "exp08_pareto_dctcp_pool32_sa" \
+    "--dctcp" \
+    "--pool-size 32 --dctcp --scheduling size_aware --dist pareto --pareto-shape 1.5 --pareto-scale 256" \
+    20000 2000
+
+run_experiment "exp09_fixed1k_pool1" \
+    "" \
+    "--pool-size 1 --dist fixed --msg-size 1024" \
+    50000 5000
+
+run_experiment "exp10_fixed1k_pool16" \
+    "" \
+    "--pool-size 16 --dist fixed --msg-size 1024" \
+    50000 5000
+
+run_experiment "exp11_fixed1k_pool32" \
+    "" \
+    "--pool-size 32 --dist fixed --msg-size 1024" \
+    50000 5000
+
+run_experiment "exp12_fixed1k_pool64" \
+    "" \
+    "--pool-size 64 --dist fixed --msg-size 1024" \
+    50000 5000
 
 echo ""
-echo "=== ALL GAPS FILLED ==="
+echo "ALL EXPERIMENTS COMPLETE at $(date)"
+echo "Results in: $LOCALDIR"
