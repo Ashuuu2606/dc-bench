@@ -7,8 +7,10 @@ if [ -f "$SCRIPT_DIR/node_config.sh" ]; then
 fi
 
 REPO_URL="${DCBENCH_REPO_URL:-https://github.com/Ashuuu2606/dc-bench.git}"
+BRANCH="${DCBENCH_BRANCH:-ha_tweaks}"
 INSTALL_CMD="${DCBENCH_INSTALL_CMD:-sudo bash scripts/setup_node.sh}"
 BUILD_DIR="${DCBENCH_BUILD_DIR:-build}"
+REMOTE_ROOT="${DCBENCH_REMOTE_ROOT:-\$HOME/tmp}"
 SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no}"
 read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
 NODES_CSV="${DCBENCH_NODES:-}"
@@ -26,6 +28,8 @@ Usage:
 
 Options:
   --repo-url URL            Git repo to clone/pull (default: $REPO_URL)
+    --branch NAME             Git branch to checkout/update (default: $BRANCH)
+    --remote-root DIR         Remote workspace root (default: $REMOTE_ROOT)
   --nodes N0,N1,...         Comma-separated node SSH targets
   --node NODE               Add one node target (repeatable)
   --install-cmd CMD         Per-node setup command in repo root (default: $INSTALL_CMD)
@@ -34,8 +38,8 @@ Options:
   -h, --help                Show help
 
 Environment:
-    DCBENCH_REPO_URL, DCBENCH_INSTALL_CMD, DCBENCH_BUILD_DIR,
-    DCBENCH_NODES, DCBENCH_SSH_OPTS
+    DCBENCH_REPO_URL, DCBENCH_BRANCH, DCBENCH_INSTALL_CMD, DCBENCH_BUILD_DIR,
+    DCBENCH_REMOTE_ROOT, DCBENCH_NODES, DCBENCH_SSH_OPTS
 EOF
 }
 
@@ -49,6 +53,14 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --repo-url)
             REPO_URL="$2"
+            shift 2
+            ;;
+        --branch)
+            BRANCH="$2"
+            shift 2
+            ;;
+        --remote-root)
+            REMOTE_ROOT="$2"
             shift 2
             ;;
         --nodes)
@@ -108,19 +120,40 @@ for NODE in "${NODES[@]}"; do
     echo "--- Setting up $NODE ---"
     remote_ssh "$NODE" "bash -s" <<REMOTE
 set -e
-cd /tmp
-if [ ! -d dc-bench ]; then
-    git clone $REPO_URL dc-bench
-else
-    cd dc-bench && git pull && cd /tmp
+mkdir -p "$REMOTE_ROOT"
+cd "$REMOTE_ROOT"
+if [ -d dc-bench ] && [ ! -d dc-bench/.git ]; then
+    echo "Removing stale $REMOTE_ROOT/dc-bench (not a git repository)..."
+    rm -rf dc-bench
 fi
 
-cd /tmp/dc-bench
+if [ ! -d dc-bench/.git ]; then
+    git clone "$REPO_URL" dc-bench
+fi
+
+cd "$REMOTE_ROOT/dc-bench"
+git fetch --all --prune
+if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+    git checkout "$BRANCH"
+else
+    git checkout -b "$BRANCH" "origin/$BRANCH"
+fi
+git pull --ff-only origin "$BRANCH"
+
 $INSTALL_CMD
 
-mkdir -p $BUILD_DIR && cd $BUILD_DIR
-cmake ..
-make -j\$(nproc)
+mkdir -p $BUILD_DIR || true
+
+if [ -w "$BUILD_DIR" ]; then
+    cd "$BUILD_DIR"
+    cmake ..
+    make -j\$(nproc)
+else
+    echo "Build directory '$BUILD_DIR' is not writable; retrying with sudo..."
+    sudo mkdir -p "$BUILD_DIR"
+    sudo cmake -S . -B "$BUILD_DIR"
+    sudo cmake --build "$BUILD_DIR" -j"\$(nproc)"
+fi
 
 echo "Build complete on \$(hostname)"
 REMOTE
@@ -133,5 +166,5 @@ echo ""
 echo "Server IP (on bench-lan): 10.10.1.1"
 echo ""
 echo "Quick test (run manually):"
-echo "  Server:  ssh $SERVER '/tmp/dc-bench/build/tcp_bench server --port 9000'"
-echo "  Client:  ssh ${CLIENTS[0]} '/tmp/dc-bench/build/tcp_bench client --host 10.10.1.1 --port 9000 --pool-size 1 --dist fixed --msg-size 1024 --requests 10000'"
+echo "  Server:  ssh $SERVER '$REMOTE_ROOT/dc-bench/build/tcp_bench server --port 9000'"
+echo "  Client:  ssh ${CLIENTS[0]} '$REMOTE_ROOT/dc-bench/build/tcp_bench client --host 10.10.1.1 --port 9000 --pool-size 1 --dist fixed --msg-size 1024 --requests 10000'"

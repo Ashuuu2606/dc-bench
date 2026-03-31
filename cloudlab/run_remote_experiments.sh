@@ -7,11 +7,13 @@ if [ -f "$SCRIPT_DIR/node_config.sh" ]; then
 fi
 source "$SCRIPT_DIR/remote_config.sh"
 
+REMOTE_ROOT="${DCBENCH_REMOTE_ROOT:-\$HOME/tmp}"
+
 dcbench_init_remote_config \
     "${DCBENCH_NODE_SERVER:-}" \
     "${DCBENCH_NODE_CLIENTS:-}" \
     "${DCBENCH_SERVER_IP:-10.10.1.1}" \
-    "/tmp/dc-bench/build/tcp_bench" \
+    "$REMOTE_ROOT/dc-bench/build/tcp_bench" \
     "$SCRIPT_DIR/../results" \
     "9000"
 
@@ -43,7 +45,7 @@ run_experiment() {
     local pids=()
     for i in "${!CLIENTS[@]}"; do
         dcbench_ssh "${CLIENTS[$i]}" \
-            "$BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output /tmp/res_${name}" \
+            "$BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output $REMOTE_ROOT/res_${name}" \
             > "$LOCALDIR/$name/client_${i}.txt" 2>&1 &
         pids+=($!)
     done
