@@ -1,14 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER="${1:?Usage: ./run_all_experiments.sh <server> <client1> [client2] ...}"
-shift
-CLIENTS=("$@")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/node_config.sh" ]; then
+    source "$SCRIPT_DIR/node_config.sh"
+fi
 
-SERVER_IP="10.10.1.1"
-PORT=9000
-BENCH="/tmp/dc-bench/build/tcp_bench"
-RESULTS_BASE="/tmp/dc-bench/exp_results"
+SERVER="${DCBENCH_SERVER:-}"
+CLIENTS_CSV="${DCBENCH_CLIENTS:-}"
+CLIENTS=()
+
+if [ -n "$CLIENTS_CSV" ]; then
+    IFS=',' read -r -a CLIENTS <<< "$CLIENTS_CSV"
+fi
+
+SERVER_IP="${DCBENCH_SERVER_IP:-10.10.1.1}"
+PORT="${DCBENCH_PORT:-9000}"
+BENCH="${DCBENCH_BENCH:-/tmp/dc-bench/build/tcp_bench}"
+RESULTS_BASE="${DCBENCH_RESULTS_BASE:-/tmp/dc-bench/exp_results}"
+SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no}"
+read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
+
+usage() {
+    cat <<EOF
+Usage:
+  $(basename "$0") --server USER@HOST --clients H1,H2,... [options]
+  $(basename "$0") <server> <client1> [client2] ...
+
+Options:
+  --server USER@HOST          Server SSH target
+  --clients H1,H2,...         Comma-separated client SSH targets
+  --client HOST               Add one client SSH target (repeatable)
+  --server-ip IP              Server data-plane IP (default: $SERVER_IP)
+  --port PORT                 Server port (default: $PORT)
+  --bench PATH                tcp_bench path (default: $BENCH)
+  --results-base DIR          Remote base results dir (default: $RESULTS_BASE)
+  --ssh-opts "..."            SSH options string (default: -o StrictHostKeyChecking=no)
+  -h, --help                  Show help
+
+Environment:
+  DCBENCH_SERVER, DCBENCH_CLIENTS, DCBENCH_SERVER_IP, DCBENCH_PORT,
+  DCBENCH_BENCH, DCBENCH_RESULTS_BASE, DCBENCH_SSH_OPTS
+EOF
+}
+
+if [ "$#" -gt 0 ] && [ "${1#--}" = "$1" ]; then
+    SERVER="$1"
+    shift
+    CLIENTS=("$@")
+fi
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --server)
+            SERVER="$2"
+            shift 2
+            ;;
+        --clients)
+            CLIENTS=()
+            IFS=',' read -r -a CLIENTS <<< "$2"
+            shift 2
+            ;;
+        --client)
+            CLIENTS+=("$2")
+            shift 2
+            ;;
+        --server-ip)
+            SERVER_IP="$2"
+            shift 2
+            ;;
+        --port)
+            PORT="$2"
+            shift 2
+            ;;
+        --bench)
+            BENCH="$2"
+            shift 2
+            ;;
+        --results-base)
+            RESULTS_BASE="$2"
+            shift 2
+            ;;
+        --ssh-opts)
+            SSH_OPTS_STR="$2"
+            read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z "$SERVER" ] || [ "${#CLIENTS[@]}" -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+remote_ssh() {
+    local host="$1"
+    local cmd="$2"
+    ssh "${SSH_OPTS[@]}" "$host" "$cmd"
+}
 
 run_tcp_experiment() {
     local NAME="$1"
@@ -22,15 +121,15 @@ run_tcp_experiment() {
     echo "  Experiment: $NAME"
     echo "========================================"
 
-    ssh "$SERVER" "mkdir -p $RESULTS_BASE/$NAME"
-    ssh "$SERVER" "pkill -f tcp_bench || true"
+    remote_ssh "$SERVER" "mkdir -p $RESULTS_BASE/$NAME"
+    remote_ssh "$SERVER" "pkill -f tcp_bench || true"
     sleep 1
 
     local SERVER_CMD="$BENCH server --port $PORT"
     if [ "$DCTCP_FLAG" = "yes" ]; then
         SERVER_CMD="$SERVER_CMD --dctcp"
     fi
-    ssh "$SERVER" "nohup $SERVER_CMD > $RESULTS_BASE/$NAME/server.log 2>&1 &"
+    remote_ssh "$SERVER" "nohup $SERVER_CMD > $RESULTS_BASE/$NAME/server.log 2>&1 &"
     sleep 2
 
     local CLIENT_PIDS=()
@@ -52,7 +151,7 @@ run_tcp_experiment() {
         CLIENT_CMD="$CLIENT_CMD --output $RESULTS_BASE/$NAME/client_$i"
 
         echo "  Starting client $i on $CLIENT..."
-        ssh "$CLIENT" "$CLIENT_CMD" &
+        remote_ssh "$CLIENT" "$CLIENT_CMD" &
         CLIENT_PIDS+=($!)
     done
 
@@ -61,7 +160,7 @@ run_tcp_experiment() {
         wait "$pid" || true
     done
 
-    ssh "$SERVER" "pkill -f tcp_bench || true"
+    remote_ssh "$SERVER" "pkill -f tcp_bench || true"
     echo "  $NAME complete."
 }
 
