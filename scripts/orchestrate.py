@@ -10,6 +10,12 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 
+REMOTE_TMP_BASE = "$HOME/tmp"
+REMOTE_BENCH_DIR = f"{REMOTE_TMP_BASE}/dc-bench"
+# Use a home-relative path for SCP, which avoids shell variable expansion issues.
+REMOTE_BENCH_DIR_SCP = "tmp/dc-bench"
+
+
 @dataclass
 class NodeConfig:
     hostname: str
@@ -55,12 +61,12 @@ def detect_internal_ip(node):
 def deploy_binaries(nodes, binary_dir):
     for node in nodes:
         print(f"  Deploying to {node.hostname}...")
-        ssh_cmd(node, "mkdir -p /tmp/dc-bench")
+        ssh_cmd(node, f"mkdir -p {REMOTE_BENCH_DIR}")
         for binary in ["tcp_bench", "homa_bench"]:
             src = os.path.join(binary_dir, binary)
             if os.path.exists(src):
-                scp_to(node, src, f"/tmp/dc-bench/{binary}")
-                ssh_cmd(node, f"chmod +x /tmp/dc-bench/{binary}")
+                scp_to(node, src, f"{REMOTE_BENCH_DIR_SCP}/{binary}")
+                ssh_cmd(node, f"chmod +x {REMOTE_BENCH_DIR}/{binary}")
 
 
 def build_tcp_args(params):
@@ -84,8 +90,8 @@ def run_tcp_experiment(config):
         server_args += " --dctcp"
 
     print(f"  Starting server on {server.hostname}...")
-    ssh_cmd(server, f"nohup /tmp/dc-bench/tcp_bench {server_args} "
-            f"> /tmp/dc-bench/server.log 2>&1 < /dev/null &")
+    ssh_cmd(server, f"nohup {REMOTE_BENCH_DIR}/tcp_bench {server_args} "
+            f"> {REMOTE_BENCH_DIR}/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
     server_addr = detect_internal_ip(server)
@@ -94,13 +100,13 @@ def run_tcp_experiment(config):
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
         client_params["host"] = server_addr
-        client_params["output"] = f"/tmp/dc-bench/results_{i}"
+        client_params["output"] = f"{REMOTE_BENCH_DIR}/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
         ssh_cmd(client_node,
-                f"nohup /tmp/dc-bench/tcp_bench {client_args} "
-                f"> /tmp/dc-bench/client_{i}.log 2>&1 < /dev/null &")
+            f"nohup {REMOTE_BENCH_DIR}/tcp_bench {client_args} "
+            f"> {REMOTE_BENCH_DIR}/client_{i}.log 2>&1 < /dev/null &")
         client_nodes.append((i, client_node))
 
     print("  Waiting for clients to finish...")
@@ -111,7 +117,7 @@ def run_tcp_experiment(config):
                 break
             time.sleep(10)
         print(f"  Client {i} finished")
-        log = ssh_cmd(client_node, f"cat /tmp/dc-bench/client_{i}.log", check=False)
+        log = ssh_cmd(client_node, f"cat {REMOTE_BENCH_DIR}/client_{i}.log", check=False)
         if log.stdout.strip():
             print(log.stdout.strip())
 
@@ -122,10 +128,10 @@ def run_tcp_experiment(config):
     for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
-        scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
+        scp_from(client_node, f"{REMOTE_BENCH_DIR_SCP}/results_{i}/latency.csv",
                  os.path.join(local_dir, "latency.csv"))
 
-    scp_from(server, "/tmp/dc-bench/server.log",
+    scp_from(server, f"{REMOTE_BENCH_DIR_SCP}/server.log",
              os.path.join(config.output_dir, "server.log"))
 
 
@@ -136,9 +142,9 @@ def run_homa_experiment(config):
     threads = params.get("threads", 4)
 
     print(f"  Starting Homa server on {server.hostname}...")
-    ssh_cmd(server, f"nohup /tmp/dc-bench/homa_bench server "
+    ssh_cmd(server, f"nohup {REMOTE_BENCH_DIR}/homa_bench server "
             f"--port {port} --threads {threads} "
-            f"> /tmp/dc-bench/server.log 2>&1 < /dev/null &")
+            f"> {REMOTE_BENCH_DIR}/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
     server_addr = detect_internal_ip(server)
@@ -147,13 +153,13 @@ def run_homa_experiment(config):
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
         client_params["host"] = server_addr
-        client_params["output"] = f"/tmp/dc-bench/results_{i}"
+        client_params["output"] = f"{REMOTE_BENCH_DIR}/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
         ssh_cmd(client_node,
-                f"nohup /tmp/dc-bench/homa_bench {client_args} "
-                f"> /tmp/dc-bench/client_{i}.log 2>&1 < /dev/null &")
+            f"nohup {REMOTE_BENCH_DIR}/homa_bench {client_args} "
+            f"> {REMOTE_BENCH_DIR}/client_{i}.log 2>&1 < /dev/null &")
         client_nodes.append((i, client_node))
 
     print("  Waiting for clients to finish...")
@@ -164,7 +170,7 @@ def run_homa_experiment(config):
                 break
             time.sleep(10)
         print(f"  Client {i} finished")
-        log = ssh_cmd(client_node, f"cat /tmp/dc-bench/client_{i}.log", check=False)
+        log = ssh_cmd(client_node, f"cat {REMOTE_BENCH_DIR}/client_{i}.log", check=False)
         if log.stdout.strip():
             print(log.stdout.strip())
 
@@ -175,7 +181,7 @@ def run_homa_experiment(config):
     for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
-        scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
+        scp_from(client_node, f"{REMOTE_BENCH_DIR_SCP}/results_{i}/latency.csv",
                  os.path.join(local_dir, "latency.csv"))
 
 
