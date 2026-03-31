@@ -137,6 +137,37 @@ Target: **c6525-25g** nodes (AMD EPYC, 25GbE ConnectX-5)
    python3 scripts/orchestrate.py configs/tcp_pooled.json --deploy
    ```
 
+### CloudLab Shell Helpers
+
+The scripts under `cloudlab/` now support CLI flags and environment variable
+overrides (for server, clients, bench path, IPs, ports, SSH options, and output
+directories) so you do not need to edit script files per allocation.
+
+Examples:
+
+```bash
+# Source reusable node names once per shell session.
+source cloudlab/node_config.sh
+
+# Then run any helper script without retyping host lists.
+bash cloudlab/run_remote_experiments.sh
+bash cloudlab/run_missing.sh
+bash cloudlab/setup_all.sh
+
+# Renamed from cloudlab/run_from_mac.sh (works from Linux/macOS)
+bash cloudlab/run_remote_experiments.sh \
+    --server user@node0.utah.cloudlab.us \
+    --clients user@node1.utah.cloudlab.us,user@node2.utah.cloudlab.us \
+    --server-ip 10.10.1.1 \
+    --localdir ./results
+
+# Alternative via environment variables
+DCBENCH_SERVER=user@node0.utah.cloudlab.us \
+DCBENCH_CLIENTS=user@node1.utah.cloudlab.us,user@node2.utah.cloudlab.us \
+DCBENCH_SERVER_IP=10.10.1.1 \
+bash cloudlab/run_missing.sh
+```
+
 ## Key Metrics
 
 - **P50 / P95 / P99 / P99.9 latency** (microseconds)
