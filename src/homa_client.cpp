@@ -3,6 +3,7 @@
 #include "dcbench/timing.h"
 
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <cstring>
 #include <iostream>
 
@@ -66,10 +67,14 @@ BenchmarkResult HomaClient::run_open_loop(const WorkloadConfig& cfg) {
                          std::ref(recv_samples), std::ref(receiving),
                          cfg.warmup_requests);
 
-    struct sockaddr_in dest{};
-    dest.sin_family = AF_INET;
+    struct addrinfo hints{}, *res = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    if (::getaddrinfo(server_host_.c_str(), nullptr, &hints, &res) != 0 || !res)
+        throw std::runtime_error("Invalid address: " + server_host_);
+    struct sockaddr_in dest = *reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
     dest.sin_port = htons(server_port_);
-    inet_pton(AF_INET, server_host_.c_str(), &dest.sin_addr);
+    ::freeaddrinfo(res);
 
     Stopwatch timer;
     WorkloadGenerator gen(cfg, 42);
@@ -131,10 +136,14 @@ void HomaClient::closed_loop_worker(const WorkloadConfig& cfg,
     if (!sock.valid()) return;
     sock.bind(0);
 
-    struct sockaddr_in dest{};
-    dest.sin_family = AF_INET;
+    struct addrinfo hints{}, *res = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    if (::getaddrinfo(server_host_.c_str(), nullptr, &hints, &res) != 0 || !res)
+        throw std::runtime_error("Invalid address: " + server_host_);
+    struct sockaddr_in dest = *reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
     dest.sin_port = htons(server_port_);
-    inet_pton(AF_INET, server_host_.c_str(), &dest.sin_addr);
+    ::freeaddrinfo(res);
 
     WorkloadGenerator gen(cfg, seed);
     uint32_t warmup = cfg.warmup_requests / cfg.closed_loop_concurrency;
