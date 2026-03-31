@@ -3,14 +3,24 @@
 # Source this file before running CloudLab helper scripts:
 #   source cloudlab/node_config.sh
 
-# Name your CloudLab nodes once here.
-export DCBENCH_NODE_SERVER="Ashutosh@hp034.utah.cloudlab.us"
+# Reusable SSH naming pieces.
+export DCBENCH_NODE_USER="himanish"
+export DCBENCH_NODE_DOMAIN="utah.cloudlab.us"
+
+# Only edit host short names below.
+export DCBENCH_NODE_SERVER_HOST="amd103"
+export DCBENCH_NODE_CLIENT_HOSTS="amd110,amd109,amd108,amd101"
+
+# Build full SSH targets from USER + HOST + DOMAIN.
+export DCBENCH_NODE_SERVER="$DCBENCH_NODE_USER@$DCBENCH_NODE_SERVER_HOST.$DCBENCH_NODE_DOMAIN"
 
 # Comma-separated client list.
-export DCBENCH_NODE_CLIENTS="Ashutosh@hp037.utah.cloudlab.us,\
-Ashutosh@hp004.utah.cloudlab.us,\
-Ashutosh@hp024.utah.cloudlab.us,\
-Ashutosh@hp008.utah.cloudlab.us"
+IFS=',' read -r -a _dcbench_client_hosts <<< "$DCBENCH_NODE_CLIENT_HOSTS"
+_dcbench_client_targets=()
+for _dcbench_host in "${_dcbench_client_hosts[@]}"; do
+	_dcbench_client_targets+=("$DCBENCH_NODE_USER@$_dcbench_host.$DCBENCH_NODE_DOMAIN")
+done
+export DCBENCH_NODE_CLIENTS="$(IFS=','; echo "${_dcbench_client_targets[*]}")"
 
 export DCBENCH_SERVER="$DCBENCH_NODE_SERVER"
 export DCBENCH_CLIENTS="$DCBENCH_NODE_CLIENTS"
