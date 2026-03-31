@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOMA_DIR="${1:-/tmp/HomaModule}"
+HOMA_DIR="${1:-$HOME/tmp/HomaModule}"
 BRANCH="${2:-linux_5.4.80}"
 
 echo "=== Building HomaModule ==="
@@ -40,4 +40,4 @@ fi
 echo ""
 echo "=== HomaModule build complete ==="
 echo "Include path for dc-bench: $HOMA_DIR"
-echo "Build with: cmake -DBUILD_HOMA=ON -DHOMA_INCLUDE_DIR=$HOMA_DIR .."
+echo "Build with: cmake -S $HOME/tmp/dc-bench -B $HOME/tmp/dc-bench/build -DBUILD_HOMA=ON -DHOMA_INCLUDE_DIR=$HOMA_DIR"
