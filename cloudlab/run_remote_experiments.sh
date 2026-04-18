@@ -8,6 +8,7 @@ fi
 source "$SCRIPT_DIR/remote_config.sh"
 
 REMOTE_ROOT="${DCBENCH_REMOTE_ROOT:-\$HOME/tmp}"
+CLIENT_TIMEOUT_SECS="${DCBENCH_CLIENT_TIMEOUT_SECS:-300}"
 
 dcbench_init_remote_config \
     "${DCBENCH_NODE_SERVER:-}" \
@@ -35,26 +36,54 @@ run_experiment() {
     echo "  $name"
     echo "================================================================"
 
-    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    dcbench_ssh "$SERVER" "pkill -u \$(id -u) -f tcp_bench 2>/dev/null || true"
+    sleep 1
+    local server_log
+    local server_pid_file
+    server_log="$REMOTE_ROOT/server_${name}.log"
+    server_pid_file="$REMOTE_ROOT/server_${name}.pid"
+
+    dcbench_ssh "$SERVER" "mkdir -p $REMOTE_ROOT && nohup $BENCH server --port $PORT $server_extra > $server_log 2>&1 & echo \\$! > $server_pid_file"
     sleep 1
 
-    dcbench_ssh "$SERVER" "nohup $BENCH server --port $PORT $server_extra > /dev/null 2>&1 &"
-    sleep 1
+    if ! dcbench_ssh "$SERVER" "test -s $server_pid_file && kill -0 \\$(cat $server_pid_file) 2>/dev/null"; then
+        echo "  ERROR: server failed to start for $name on $SERVER"
+        echo "  --- server log tail ($SERVER:$server_log) ---"
+        dcbench_ssh "$SERVER" "tail -n 40 $server_log" || true
+        return 1
+    fi
 
     mkdir -p "$LOCALDIR/$name"
     local pids=()
     for i in "${!CLIENTS[@]}"; do
+        echo "  Launching client_$i on ${CLIENTS[$i]}..."
         dcbench_ssh "${CLIENTS[$i]}" \
-            "$BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output $REMOTE_ROOT/res_${name}" \
+            "mkdir -p $REMOTE_ROOT && if command -v timeout >/dev/null 2>&1; then timeout ${CLIENT_TIMEOUT_SECS}s $BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output $REMOTE_ROOT/res_${name}; else $BENCH client --host $SERVER_IP --port $PORT $client_extra --requests $nreq --warmup $warmup --cpu-monitor --output $REMOTE_ROOT/res_${name}; fi" \
             > "$LOCALDIR/$name/client_${i}.txt" 2>&1 &
         pids+=($!)
     done
 
+    echo "  Waiting for ${#pids[@]} client runs (timeout: ${CLIENT_TIMEOUT_SECS}s each if timeout is available)..."
+
+    local client_failed=0
     for pid in "${pids[@]}"; do
-        wait "$pid" || true
+        if ! wait "$pid"; then
+            client_failed=1
+        fi
     done
 
-    dcbench_ssh "$SERVER" "pkill -f tcp_bench 2>/dev/null; true"
+    dcbench_ssh "$SERVER" "pkill -u \$(id -u) -f tcp_bench 2>/dev/null || true"
+
+    if [ "$client_failed" -ne 0 ]; then
+        echo "  ERROR: one or more client runs failed for $name"
+        for i in "${!CLIENTS[@]}"; do
+            echo "  --- client_$i (${CLIENTS[$i]}) last lines ---"
+            tail -n 20 "$LOCALDIR/$name/client_${i}.txt" 2>/dev/null || true
+        done
+        echo "  --- server log tail ($SERVER:$server_log) ---"
+        dcbench_ssh "$SERVER" "tail -n 40 $server_log" || true
+        return 1
+    fi
 
     echo "  Results:"
     for i in "${!CLIENTS[@]}"; do
@@ -70,8 +99,23 @@ run_experiment() {
     done
 }
 
+check_remote_bench() {
+    local node="$1"
+    if ! dcbench_ssh "$node" "test -x $BENCH"; then
+        echo "ERROR: benchmark binary not found/executable on $node: $BENCH"
+        echo "Hint: run cloudlab/setup_all.sh and ensure build output exists under DCBENCH_REMOTE_ROOT on that node."
+        return 1
+    fi
+}
+
 echo "Starting all experiments at $(date)"
 dcbench_print_remote_config
+
+# echo "Checking benchmark binary on all nodes..."
+# check_remote_bench "$SERVER"
+# for client in "${CLIENTS[@]}"; do
+#     check_remote_bench "$client"
+# done
 
 run_experiment "exp01_bimodal_single" \
     "" \
