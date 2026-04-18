@@ -18,7 +18,7 @@ dcbench_init_remote_config() {
     PORT="${DCBENCH_PORT:-$default_port}"
 
     # Use a single string and split once to support multi-word SSH options.
-    SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no}"
+    SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2}"
     read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
 
     CLIENTS=()
@@ -40,7 +40,7 @@ Options:
   --bench PATH                 Benchmark binary path on remote hosts
   --localdir PATH              Local results directory
   --port PORT                  Server/client port
-  --ssh-opts "..."             SSH options string (default: -o StrictHostKeyChecking=no)
+    --ssh-opts "..."             SSH options string (default: -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2)
   -h, --help                   Show help
 
 Environment equivalents:

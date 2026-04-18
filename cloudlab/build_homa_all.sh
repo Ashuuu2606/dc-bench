@@ -9,6 +9,7 @@ fi
 HOMA_BRANCH="${DCBENCH_HOMA_BRANCH:-linux_5.4.80}"
 REMOTE_ROOT="${DCBENCH_REMOTE_ROOT:-\$HOME/tmp}"
 HOMA_DIR="${DCBENCH_HOMA_DIR:-$REMOTE_ROOT/HomaModule}"
+BUILD_DIR="${DCBENCH_BUILD_DIR:-build}"
 SSH_OPTS_STR="${DCBENCH_SSH_OPTS:--o StrictHostKeyChecking=no}"
 read -r -a SSH_OPTS <<< "$SSH_OPTS_STR"
 NODES_CSV="${DCBENCH_NODES:-}"
@@ -29,12 +30,13 @@ Options:
   --homa-branch NAME        HomaModule branch (default: $HOMA_BRANCH)
   --homa-dir DIR            HomaModule directory on remote nodes (default: $HOMA_DIR)
   --remote-root DIR         Remote workspace root (default: $REMOTE_ROOT)
+    --build-dir DIR           Build directory under repo root (default: $BUILD_DIR)
   --ssh-opts "..."          SSH options string (default: -o StrictHostKeyChecking=no)
   -h, --help                Show help
 
 Environment:
-  DCBENCH_NODES, DCBENCH_HOMA_BRANCH, DCBENCH_HOMA_DIR,
-  DCBENCH_REMOTE_ROOT, DCBENCH_SSH_OPTS
+    DCBENCH_NODES, DCBENCH_HOMA_BRANCH, DCBENCH_HOMA_DIR, DCBENCH_BUILD_DIR,
+    DCBENCH_REMOTE_ROOT, DCBENCH_SSH_OPTS
 EOF
 }
 
@@ -59,6 +61,10 @@ while [ "$#" -gt 0 ]; do
         --remote-root)
             REMOTE_ROOT="$2"
             HOMA_DIR="${DCBENCH_HOMA_DIR:-$REMOTE_ROOT/HomaModule}"
+            shift 2
+            ;;
+        --build-dir)
+            BUILD_DIR="$2"
             shift 2
             ;;
         --ssh-opts)
@@ -94,6 +100,7 @@ echo "=== Building HomaModule on ${#NODES[@]} nodes ==="
 echo "  Nodes: ${NODES[*]}"
 echo "  Homa branch: $HOMA_BRANCH"
 echo "  Homa dir: $HOMA_DIR"
+echo "  Build dir: $BUILD_DIR"
 
 overall_rc=0
 for NODE in "${NODES[@]}"; do
@@ -107,6 +114,22 @@ if [ ! -d "$REMOTE_ROOT/dc-bench/.git" ]; then
 fi
 cd "$REMOTE_ROOT/dc-bench"
 sudo bash scripts/build_homa.sh "$HOMA_DIR" "$HOMA_BRANCH"
+
+if [ -w "$BUILD_DIR" ] || mkdir -p "$BUILD_DIR" 2>/dev/null; then
+    cmake -S . -B "$BUILD_DIR" -DBUILD_HOMA=ON -DHOMA_INCLUDE_DIR="$HOMA_DIR"
+    cmake --build "$BUILD_DIR" --target homa_bench -j"\$(nproc)"
+else
+    echo "Build directory '$BUILD_DIR' is not writable; retrying with sudo..."
+    sudo mkdir -p "$BUILD_DIR"
+    sudo cmake -S . -B "$BUILD_DIR" -DBUILD_HOMA=ON -DHOMA_INCLUDE_DIR="$HOMA_DIR"
+    sudo cmake --build "$BUILD_DIR" --target homa_bench -j"\$(nproc)"
+fi
+
+if [ ! -x "$BUILD_DIR/homa_bench" ]; then
+    echo "ERROR: homa_bench was not produced at $REMOTE_ROOT/dc-bench/$BUILD_DIR/homa_bench"
+    exit 1
+fi
+echo "homa_bench ready: $REMOTE_ROOT/dc-bench/$BUILD_DIR/homa_bench"
 REMOTE
     then
         echo "  $NODE done."
@@ -123,4 +146,4 @@ if [ "$overall_rc" -ne 0 ]; then
 fi
 
 echo ""
-echo "=== HomaModule build complete on all nodes ==="
+echo "=== HomaModule + homa_bench build complete on all nodes ==="
