@@ -8,8 +8,8 @@ export DCBENCH_NODE_USER="himanish"
 export DCBENCH_NODE_DOMAIN="utah.cloudlab.us"
 
 # Only edit host short names below.
-export DCBENCH_NODE_SERVER_HOST="amd103"
-export DCBENCH_NODE_CLIENT_HOSTS="amd110,amd109,amd108,amd101"
+export DCBENCH_NODE_SERVER_HOST="hp078"
+export DCBENCH_NODE_CLIENT_HOSTS="hp073,hp074,hp060,hp171,hp188,hp052,hp172,hp077,hp054,hp046,hp069,hp079"
 
 # Build full SSH targets from USER + HOST + DOMAIN.
 export DCBENCH_NODE_SERVER="$DCBENCH_NODE_USER@$DCBENCH_NODE_SERVER_HOST.$DCBENCH_NODE_DOMAIN"
