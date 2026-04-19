@@ -2,31 +2,38 @@
 # Fan-in scaling study: generates JSON configs and runs them through
 # scripts/orchestrate.py, then analyzes with scripts/analyze.py.
 #
-# Usage: bash cloudlab/run_fanin.sh [--fan-ins "4 8 12"] [--dry-run]
+# Usage: bash cloudlab/run_fanin.sh [--trial N] [--fan-ins "4 8 12 16"] [--dry-run]
+#
+# With --trial N, output goes to:
+#   results/fanin_test${N}/fanin_${FANIN}/{homa_fi${FANIN},tcp_single_fi${FANIN},tcp_dctcp_fi${FANIN}}
+# Default trial = 1.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/node_config.sh"
 
-FANIN_LEVELS=(4 8 12)
+FANIN_LEVELS=(4 8 12 16)
+TRIAL=1
 DRY_RUN=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --trial)    TRIAL="$2"; shift 2 ;;
         --fan-ins)  read -r -a FANIN_LEVELS <<< "$2"; shift 2 ;;
         --dry-run)  DRY_RUN=1; shift ;;
         -h|--help)
-            echo "Usage: $(basename "$0") [--fan-ins \"4 8 12\"] [--dry-run]"
+            echo "Usage: $(basename "$0") [--trial N] [--fan-ins \"4 8 12 16\"] [--dry-run]"
             exit 0 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
 
-# Split all client hosts into an array
 IFS=',' read -r -a ALL_CLIENT_HOSTS <<< "$DCBENCH_NODE_CLIENT_HOSTS"
 SERVER_HOST="$DCBENCH_NODE_SERVER_HOST.$DCBENCH_NODE_DOMAIN"
 USER="$DCBENCH_NODE_USER"
+
+TRIAL_ROOT="$REPO_ROOT/results/fanin_test${TRIAL}"
 
 make_config() {
     local out_file="$1"
@@ -36,7 +43,6 @@ make_config() {
     shift 4
     local client_hosts=("$@")
 
-    # Build JSON client list and params inline with Python to avoid quoting issues
     python3 - "$out_file" "$name" "$protocol" "$SERVER_HOST" "$USER" \
               "$out_dir" "${client_hosts[@]}" <<'PYEOF'
 import json, sys
@@ -98,9 +104,9 @@ run_experiment() {
 
 analyze() {
     local fanin="$1"
-    local results_dir="$REPO_ROOT/results/fanin_${fanin}"
+    local results_dir="$TRIAL_ROOT/fanin_${fanin}"
     echo ""
-    echo "--- Analysis: fan-in=$fanin ---"
+    echo "--- Analysis (trial=${TRIAL}): fan-in=$fanin ---"
     python3 "$REPO_ROOT/scripts/analyze.py" \
         "$results_dir/homa_fi${fanin}" \
         "$results_dir/tcp_single_fi${fanin}" \
@@ -118,12 +124,15 @@ analyze() {
 
 # ---------------------------------------------------------------------------
 
-echo "=== Fan-in scaling study ==="
+echo "=== Fan-in scaling study (trial=${TRIAL}) ==="
 echo "  Server:    $SERVER_HOST"
 echo "  Clients (${#ALL_CLIENT_HOSTS[@]}): ${ALL_CLIENT_HOSTS[*]}"
 echo "  Fan-in levels: ${FANIN_LEVELS[*]}"
+echo "  Output root:   $TRIAL_ROOT"
 [ "$DRY_RUN" -eq 1 ] && echo "  DRY RUN"
 echo ""
+
+mkdir -p "$TRIAL_ROOT"
 
 TMPDIR_CONFIGS="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_CONFIGS"' EXIT
@@ -136,9 +145,9 @@ for FANIN in "${FANIN_LEVELS[@]}"; do
 
     SLICE=("${ALL_CLIENT_HOSTS[@]:0:$FANIN}")
     CLIENT_FQDNS=("${SLICE[@]/%/.$DCBENCH_NODE_DOMAIN}")
-    OUTBASE="$REPO_ROOT/results/fanin_${FANIN}"
+    OUTBASE="$TRIAL_ROOT/fanin_${FANIN}"
 
-    echo "====== Fan-in = $FANIN ======"
+    echo "====== Trial=${TRIAL}  Fan-in=${FANIN} ======"
     echo "  Clients: ${CLIENT_FQDNS[*]}"
 
     for VARIANT in tcp_single tcp_dctcp homa; do
@@ -158,4 +167,5 @@ for FANIN in "${FANIN_LEVELS[@]}"; do
     echo ""
 done
 
-echo "=== Fan-in study complete ==="
+echo "=== Fan-in study trial=${TRIAL} complete ==="
+echo "  Data under: $TRIAL_ROOT"

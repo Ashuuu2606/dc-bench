@@ -39,7 +39,12 @@ modprobe tcp_dctcp 2>/dev/null || true
 sysctl -w net.ipv4.tcp_ecn=1
 sysctl -w net.ipv4.tcp_ecn_fallback=1
 
-IFACE=$(ip -o link show | awk -F: '/ens|enp/{print $2; exit}' | tr -d ' ')
+# Prefer the interface that holds the bench-LAN IP (10.0.1.x or 10.10.1.x);
+# fall back to the first ens*/enp* otherwise.
+IFACE=$(ip -4 -o addr show | awk '/inet (10\.0\.1\.|10\.10\.1\.)/{print $2; exit}')
+if [ -z "$IFACE" ]; then
+    IFACE=$(ip -o link show | awk -F: '/ens|enp/{print $2; exit}' | tr -d ' ')
+fi
 if [ -n "$IFACE" ]; then
     echo "[7/7] Configuring NIC ($IFACE)..."
     ethtool -K "$IFACE" tso off gso off gro off 2>/dev/null || true

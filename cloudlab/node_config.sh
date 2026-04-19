@@ -4,12 +4,15 @@
 #   source cloudlab/node_config.sh
 
 # Reusable SSH naming pieces.
-export DCBENCH_NODE_USER="himanish"
+export DCBENCH_NODE_USER="Ashutosh"
 export DCBENCH_NODE_DOMAIN="utah.cloudlab.us"
 
 # Only edit host short names below.
-export DCBENCH_NODE_SERVER_HOST="hp078"
-export DCBENCH_NODE_CLIENT_HOSTS="hp073,hp074,hp060,hp171,hp188,hp052,hp172,hp077,hp054,hp046,hp069,hp079"
+# Experiment: dirigent-xl170 (maestro_sosp24ae profile), 17 xl170 nodes, Utah.
+# Server = node-0 (hp101). Clients = node-1..node-16 (16 clients, same bench-LAN).
+# Covers fan-in 4, 8, 12, 16.
+export DCBENCH_NODE_SERVER_HOST="hp101"
+export DCBENCH_NODE_CLIENT_HOSTS="hp032,hp039,hp083,hp020,hp035,hp087,hp119,hp030,hp004,hp007,hp024,hp005,hp003,hp102,hp033,hp115"
 
 # Build full SSH targets from USER + HOST + DOMAIN.
 export DCBENCH_NODE_SERVER="$DCBENCH_NODE_USER@$DCBENCH_NODE_SERVER_HOST.$DCBENCH_NODE_DOMAIN"
@@ -27,4 +30,5 @@ export DCBENCH_CLIENTS="$DCBENCH_NODE_CLIENTS"
 export DCBENCH_NODES="$DCBENCH_SERVER,$DCBENCH_CLIENTS"
 
 # Data-plane server IP seen by clients.
-export DCBENCH_SERVER_IP="10.10.1.1"
+# dirigent-xl170 bench-LAN is 10.0.1.0/24 on ens1f1 (server = node-0 = .1).
+export DCBENCH_SERVER_IP="10.0.1.1"
