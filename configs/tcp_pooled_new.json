@@ -1,5 +1,5 @@
 {
-    "name": "tcp_dctcp_pooled_32",
+    "name": "tcp_pooled_32_new",
     "protocol": "tcp",
     "server": {
         "hostname": "amd103.utah.cloudlab.us",
@@ -24,18 +24,18 @@
         }
     ],
     "binary_dir": "./build",
-    "output_dir": "./results/tcp_dctcp_pooled_32",
+    "output_dir": "./results/tcp_pooled_32_new",
     "params": {
         "port": 9000,
         "pool_size": 32,
-        "dctcp": true,
+        "dctcp": false,
         "scheduling": "size_aware",
         "dist": "bimodal",
         "arrival": "closed",
         "msg_size": 1024,
         "bimodal_small": 256,
-        "bimodal_large": 1048576,
-        "bimodal_ratio": 0.9,
+        "bimodal_large": 4194304,
+        "bimodal_ratio": 0.1,
         "requests": 100000,
         "warmup": 5000,
         "cpu_monitor": true

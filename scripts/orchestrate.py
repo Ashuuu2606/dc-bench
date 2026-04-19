@@ -10,6 +10,14 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 
+REMOTE_TMP_BASE = "$HOME/tmp"
+REMOTE_ROOT_DIR = f"{REMOTE_TMP_BASE}/dc-bench"
+REMOTE_BIN_DIR = f"{REMOTE_ROOT_DIR}/build"
+# Use home-relative paths for SCP, which avoids shell variable expansion issues.
+REMOTE_ROOT_DIR_SCP = "tmp/dc-bench"
+REMOTE_BIN_DIR_SCP = f"{REMOTE_ROOT_DIR_SCP}/build"
+
+
 @dataclass
 class NodeConfig:
     hostname: str
@@ -46,15 +54,30 @@ def scp_from(node, remote_path, local_path):
     return subprocess.run(full, capture_output=True, text=True, check=True)
 
 
+def detect_internal_ip(node):
+    result = ssh_cmd(node, "ip -4 addr show | grep 'inet 10\\.' | awk '{print $2}' | cut -d/ -f1 | head -1", check=False)
+    ip = result.stdout.strip() if result.returncode == 0 else ""
+    return ip or node.hostname
+
+
+def verify_remote_binary(nodes, binary):
+    missing = []
+    for node in nodes:
+        result = ssh_cmd(node, f"test -x {REMOTE_BIN_DIR}/{binary}", check=False)
+        if result.returncode != 0:
+            missing.append(node.hostname)
+    return missing
+
+
 def deploy_binaries(nodes, binary_dir):
     for node in nodes:
         print(f"  Deploying to {node.hostname}...")
-        ssh_cmd(node, "mkdir -p /tmp/dc-bench")
+        ssh_cmd(node, f"mkdir -p {REMOTE_BIN_DIR}")
         for binary in ["tcp_bench", "homa_bench"]:
             src = os.path.join(binary_dir, binary)
             if os.path.exists(src):
-                scp_to(node, src, f"/tmp/dc-bench/{binary}")
-                ssh_cmd(node, f"chmod +x /tmp/dc-bench/{binary}")
+                scp_to(node, src, f"{REMOTE_BIN_DIR_SCP}/{binary}")
+                ssh_cmd(node, f"chmod +x {REMOTE_BIN_DIR}/{binary}")
 
 
 def build_tcp_args(params):
@@ -78,43 +101,48 @@ def run_tcp_experiment(config):
         server_args += " --dctcp"
 
     print(f"  Starting server on {server.hostname}...")
-    ssh_cmd(server, f"nohup /tmp/dc-bench/tcp_bench {server_args} "
-            f"> /tmp/dc-bench/server.log 2>&1 &")
+    ssh_cmd(server, f"nohup {REMOTE_BIN_DIR}/tcp_bench {server_args} "
+            f"> {REMOTE_ROOT_DIR}/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
-    client_procs = []
+    server_addr = detect_internal_ip(server)
+    print(f"  Server internal address: {server_addr}")
+    client_nodes = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname.split(".")[0]
-        client_params["output"] = f"/tmp/dc-bench/results_{i}"
+        client_params["host"] = server_addr
+        client_params["output"] = f"{REMOTE_ROOT_DIR}/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
-        proc = subprocess.Popen(
-            ["ssh", "-o", "StrictHostKeyChecking=no",
-             f"{client_node.user}@{client_node.hostname}",
-             f"/tmp/dc-bench/tcp_bench {client_args}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        client_procs.append((i, client_node, proc))
+        ssh_cmd(client_node,
+            f"nohup {REMOTE_BIN_DIR}/tcp_bench {client_args} "
+            f"> {REMOTE_ROOT_DIR}/client_{i}.log 2>&1 < /dev/null &")
+        client_nodes.append((i, client_node))
 
-    for i, node, proc in client_procs:
-        stdout, stderr = proc.communicate(timeout=600)
-        print(f"  Client {i} finished (exit={proc.returncode})")
-        if stdout:
-            print(stdout)
+    print("  Waiting for clients to finish...")
+    for i, client_node in client_nodes:
+        while True:
+            r = ssh_cmd(client_node, "pgrep -f 'tcp_bench client'", check=False)
+            if r.returncode != 0:
+                break
+            time.sleep(10)
+        print(f"  Client {i} finished")
+        log = ssh_cmd(client_node, f"cat {REMOTE_ROOT_DIR}/client_{i}.log", check=False)
+        if log.stdout.strip():
+            print(log.stdout.strip())
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f tcp_bench", check=False)
 
     os.makedirs(config.output_dir, exist_ok=True)
-    for i, client_node, _ in client_procs:
+    for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
-        scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
+        scp_from(client_node, f"{REMOTE_ROOT_DIR_SCP}/results_{i}/latency.csv",
                  os.path.join(local_dir, "latency.csv"))
 
-    scp_from(server, "/tmp/dc-bench/server.log",
+    scp_from(server, f"{REMOTE_ROOT_DIR_SCP}/server.log",
              os.path.join(config.output_dir, "server.log"))
 
 
@@ -125,41 +153,46 @@ def run_homa_experiment(config):
     threads = params.get("threads", 4)
 
     print(f"  Starting Homa server on {server.hostname}...")
-    ssh_cmd(server, f"nohup /tmp/dc-bench/homa_bench server "
+    ssh_cmd(server, f"nohup {REMOTE_BIN_DIR}/homa_bench server "
             f"--port {port} --threads {threads} "
-            f"> /tmp/dc-bench/server.log 2>&1 &")
+            f"> {REMOTE_ROOT_DIR}/server.log 2>&1 < /dev/null &")
     time.sleep(2)
 
-    client_procs = []
+    server_addr = detect_internal_ip(server)
+    print(f"  Server internal address: {server_addr}")
+    client_nodes = []
     for i, client_node in enumerate(config.clients):
         client_params = dict(params)
-        client_params["host"] = server.hostname.split(".")[0]
-        client_params["output"] = f"/tmp/dc-bench/results_{i}"
+        client_params["host"] = server_addr
+        client_params["output"] = f"{REMOTE_ROOT_DIR}/results_{i}"
         client_args = f"client {build_tcp_args(client_params)}"
 
         print(f"  Starting client {i} on {client_node.hostname}...")
-        proc = subprocess.Popen(
-            ["ssh", "-o", "StrictHostKeyChecking=no",
-             f"{client_node.user}@{client_node.hostname}",
-             f"/tmp/dc-bench/homa_bench {client_args}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        client_procs.append((i, client_node, proc))
+        ssh_cmd(client_node,
+            f"nohup {REMOTE_BIN_DIR}/homa_bench {client_args} "
+            f"> {REMOTE_ROOT_DIR}/client_{i}.log 2>&1 < /dev/null &")
+        client_nodes.append((i, client_node))
 
-    for i, node, proc in client_procs:
-        stdout, stderr = proc.communicate(timeout=600)
-        print(f"  Client {i} finished (exit={proc.returncode})")
-        if stdout:
-            print(stdout)
+    print("  Waiting for clients to finish...")
+    for i, client_node in client_nodes:
+        while True:
+            r = ssh_cmd(client_node, "pgrep -f 'homa_bench client'", check=False)
+            if r.returncode != 0:
+                break
+            time.sleep(10)
+        print(f"  Client {i} finished")
+        log = ssh_cmd(client_node, f"cat {REMOTE_ROOT_DIR}/client_{i}.log", check=False)
+        if log.stdout.strip():
+            print(log.stdout.strip())
 
     print("  Stopping server...")
     ssh_cmd(server, "pkill -f homa_bench", check=False)
 
     os.makedirs(config.output_dir, exist_ok=True)
-    for i, client_node, _ in client_procs:
+    for i, client_node in client_nodes:
         local_dir = os.path.join(config.output_dir, f"client_{i}")
         os.makedirs(local_dir, exist_ok=True)
-        scp_from(client_node, f"/tmp/dc-bench/results_{i}/latency.csv",
+        scp_from(client_node, f"{REMOTE_ROOT_DIR_SCP}/results_{i}/latency.csv",
                  os.path.join(local_dir, "latency.csv"))
 
 
@@ -195,6 +228,22 @@ def main():
     if args.deploy:
         print("Deploying binaries...")
         deploy_binaries(all_nodes, config.binary_dir)
+
+    expected_binary = None
+    if config.protocol == "tcp":
+        expected_binary = "tcp_bench"
+    elif config.protocol == "homa":
+        expected_binary = "homa_bench"
+
+    if expected_binary is not None:
+        missing = verify_remote_binary(all_nodes, expected_binary)
+        if missing:
+            print("Missing remote benchmark binary on:", file=sys.stderr)
+            for host in missing:
+                print(f"  - {host}", file=sys.stderr)
+            print(f"Expected path: {REMOTE_BIN_DIR}/{expected_binary}", file=sys.stderr)
+            print("Run with --deploy or build on each node under $HOME/tmp/dc-bench/build.", file=sys.stderr)
+            sys.exit(1)
 
     print(f"\nRunning experiment: {config.name}")
     print(f"  Protocol: {config.protocol}")

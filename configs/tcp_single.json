@@ -2,14 +2,26 @@
     "name": "tcp_single_stream",
     "protocol": "tcp",
     "server": {
-        "hostname": "node-0.experiment.project.emulab.net",
-        "user": "root"
+        "hostname": "amd103.utah.cloudlab.us",
+        "user": "himanish"
     },
     "clients": [
-        {"hostname": "node-1.experiment.project.emulab.net", "user": "root"},
-        {"hostname": "node-2.experiment.project.emulab.net", "user": "root"},
-        {"hostname": "node-3.experiment.project.emulab.net", "user": "root"},
-        {"hostname": "node-4.experiment.project.emulab.net", "user": "root"}
+        {
+            "hostname": "amd110.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd109.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd108.utah.cloudlab.us",
+            "user": "himanish"
+        },
+        {
+            "hostname": "amd101.utah.cloudlab.us",
+            "user": "himanish"
+        }
     ],
     "binary_dir": "./build",
     "output_dir": "./results/tcp_single",
