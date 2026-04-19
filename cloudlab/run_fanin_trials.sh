@@ -69,7 +69,12 @@ if [ -x "$REPORT_SCRIPT" ] || [ -f "$REPORT_SCRIPT" ]; then
     for T in $(seq "$START_TRIAL" "$END_TRIAL"); do
         TRIAL_ARGS+=(--trial "$T")
     done
-    python3 "$REPORT_SCRIPT" \
+    PY="python3"
+    if [ -x /tmp/dcbench_venv/bin/python ] && \
+       /tmp/dcbench_venv/bin/python -c "import numpy" >/dev/null 2>&1; then
+        PY="/tmp/dcbench_venv/bin/python"
+    fi
+    "$PY" "$REPORT_SCRIPT" \
         "${TRIAL_ARGS[@]}" \
         --fan-ins $FAN_INS \
         --results-dir "$REPO_ROOT/results"

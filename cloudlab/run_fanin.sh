@@ -105,21 +105,31 @@ run_experiment() {
 analyze() {
     local fanin="$1"
     local results_dir="$TRIAL_ROOT/fanin_${fanin}"
-    echo ""
-    echo "--- Analysis (trial=${TRIAL}): fan-in=$fanin ---"
-    python3 "$REPO_ROOT/scripts/analyze.py" \
-        "$results_dir/homa_fi${fanin}" \
-        "$results_dir/tcp_single_fi${fanin}" \
-        "$results_dir/tcp_dctcp_fi${fanin}" \
-        --labels "homa-${fanin}" "tcp1-${fanin}" "dctcp32-${fanin}"
+
+    # Prefer venv python if it has numpy; fall back to system python3.
+    local PY="python3"
+    if [ -x /tmp/dcbench_venv/bin/python ] && \
+       /tmp/dcbench_venv/bin/python -c "import numpy" >/dev/null 2>&1; then
+        PY="/tmp/dcbench_venv/bin/python"
+    fi
 
     echo ""
-    python3 "$REPO_ROOT/scripts/fairness.py" \
+    echo "--- Analysis (trial=${TRIAL}): fan-in=$fanin ---"
+    "$PY" "$REPO_ROOT/scripts/analyze.py" \
         "$results_dir/homa_fi${fanin}" \
         "$results_dir/tcp_single_fi${fanin}" \
         "$results_dir/tcp_dctcp_fi${fanin}" \
         --labels "homa-${fanin}" "tcp1-${fanin}" "dctcp32-${fanin}" \
-        --pool-size 32
+        || echo "  (inline analyze skipped; fanin_report.py will do final analysis)"
+
+    echo ""
+    "$PY" "$REPO_ROOT/scripts/fairness.py" \
+        "$results_dir/homa_fi${fanin}" \
+        "$results_dir/tcp_single_fi${fanin}" \
+        "$results_dir/tcp_dctcp_fi${fanin}" \
+        --labels "homa-${fanin}" "tcp1-${fanin}" "dctcp32-${fanin}" \
+        --pool-size 32 \
+        || echo "  (inline fairness skipped; fanin_report.py will do final analysis)"
 }
 
 # ---------------------------------------------------------------------------
