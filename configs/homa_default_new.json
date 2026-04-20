@@ -2,25 +2,25 @@
     "name": "homa_default_new",
     "protocol": "homa",
     "server": {
-        "hostname": "amd103.utah.cloudlab.us",
-        "user": "himanish"
+        "hostname": "hp069.utah.cloudlab.us",
+        "user": "varunm"
     },
     "clients": [
         {
-            "hostname": "amd110.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp077.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd109.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp066.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd108.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp046.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd101.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp079.utah.cloudlab.us",
+            "user": "varunm"
         }
     ],
     "binary_dir": "./build",
@@ -33,7 +33,7 @@
         "arrival": "closed",
         "msg_size": 1024,
         "bimodal_small": 256,
-        "bimodal_large": 4194304,
+        "bimodal_large": 262144,
         "bimodal_ratio": 0.1,
         "requests": 100000,
         "warmup": 5000,

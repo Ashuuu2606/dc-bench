@@ -2,24 +2,24 @@
     "name": "tcp_single_stream_new",
     "protocol": "tcp",
     "server": {
-        "hostname": "amd103.utah.cloudlab.us",
+        "hostname": "hp069.utah.cloudlab.us",
         "user": "himanish"
     },
     "clients": [
         {
-            "hostname": "amd110.utah.cloudlab.us",
+            "hostname": "hp077.utah.cloudlab.us",
             "user": "himanish"
         },
         {
-            "hostname": "amd109.utah.cloudlab.us",
+            "hostname": "hp066.utah.cloudlab.us",
             "user": "himanish"
         },
         {
-            "hostname": "amd108.utah.cloudlab.us",
+            "hostname": "hp046.utah.cloudlab.us",
             "user": "himanish"
         },
         {
-            "hostname": "amd101.utah.cloudlab.us",
+            "hostname": "hp079.utah.cloudlab.us",
             "user": "himanish"
         }
     ],
