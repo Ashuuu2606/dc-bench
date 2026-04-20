@@ -4,15 +4,14 @@
 #   source cloudlab/node_config.sh
 
 # Reusable SSH naming pieces.
-export DCBENCH_NODE_USER="Ashutosh"
+export DCBENCH_NODE_USER="varunm"
 export DCBENCH_NODE_DOMAIN="utah.cloudlab.us"
 
 # Only edit host short names below.
-# Experiment: dirigent-xl170 (maestro_sosp24ae profile), 17 xl170 nodes, Utah.
-# Server = node-0 (hp101). Clients = node-1..node-16 (16 clients, same bench-LAN).
-# Covers fan-in 4, 8, 12, 16.
-export DCBENCH_NODE_SERVER_HOST="hp101"
-export DCBENCH_NODE_CLIENT_HOSTS="hp032,hp039,hp083,hp020,hp035,hp087,hp119,hp030,hp004,hp007,hp024,hp005,hp003,hp102,hp033,hp115"
+# Stress-test allocation: 9 hp-class nodes (shared machine, varunm user).
+# Server = hp069. Clients = hp077..hp073.
+export DCBENCH_NODE_SERVER_HOST="hp069"
+export DCBENCH_NODE_CLIENT_HOSTS="hp077,hp066,hp046,hp079,hp074,hp078,hp055,hp073"
 
 # Build full SSH targets from USER + HOST + DOMAIN.
 export DCBENCH_NODE_SERVER="$DCBENCH_NODE_USER@$DCBENCH_NODE_SERVER_HOST.$DCBENCH_NODE_DOMAIN"

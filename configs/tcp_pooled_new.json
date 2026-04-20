@@ -2,25 +2,25 @@
     "name": "tcp_pooled_32_new",
     "protocol": "tcp",
     "server": {
-        "hostname": "amd103.utah.cloudlab.us",
-        "user": "himanish"
+        "hostname": "hp069.utah.cloudlab.us",
+        "user": "varunm"
     },
     "clients": [
         {
-            "hostname": "amd110.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp077.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd109.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp066.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd108.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp046.utah.cloudlab.us",
+            "user": "varunm"
         },
         {
-            "hostname": "amd101.utah.cloudlab.us",
-            "user": "himanish"
+            "hostname": "hp079.utah.cloudlab.us",
+            "user": "varunm"
         }
     ],
     "binary_dir": "./build",
